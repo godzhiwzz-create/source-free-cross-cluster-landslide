@@ -1,0 +1,42 @@
+{
+  "provenance": "Values transcribed from the submitted manuscript, not generated during installation.",
+  "protocol": {
+    "dataset": "Sen12Landslides",
+    "clusters": 6,
+    "split": "leave-one-cluster-out",
+    "source_checkpoint": "fixed 75-epoch last.pt",
+    "component_connectivity": 8,
+    "component_iou_threshold": 0.3
+  },
+  "threshold_probe_single_seed": {
+    "fixed": 0.181,
+    "support": 0.212,
+    "source_prior": 0.220,
+    "oracle": 0.221,
+    "full_finetuning_fixed_threshold": 0.260
+  },
+  "parameter_scope_k50_fixed_threshold": {
+    "full": 0.260,
+    "decoder": 0.212,
+    "batchnorm": 0.210,
+    "head": 0.206
+  },
+  "budget_grid_six_cluster_mean": {
+    "k25_steps10": 0.251,
+    "k25_steps20": 0.272,
+    "k25_steps50": 0.307,
+    "k50_steps10": 0.261,
+    "k50_steps20": 0.290,
+    "k50_steps50": 0.332,
+    "k100_steps50": 0.356
+  },
+  "deployable_k50_cross_fit": {
+    "pixel_f1": 0.306,
+    "source_component_recall": 0.116,
+    "repair_component_recall": 0.205,
+    "repair_component_precision": 0.184,
+    "repair_component_f1": 0.171,
+    "repair_component_quality": 0.096,
+    "repair_false_alarms_per_patch": 3.258
+  }
+}
