@@ -5,8 +5,10 @@
     "clusters": 6,
     "split": "leave-one-cluster-out",
     "source_checkpoint": "fixed 75-epoch last.pt",
-    "component_connectivity": 8,
-    "component_iou_threshold": 0.3
+    "component_connectivity": 4,
+    "component_matching": "independent bidirectional overlap tests, not one-to-one",
+    "component_iou_threshold": 0.3,
+    "strict_audit_available": "8-connectivity with greedy one-to-one matching"
   },
   "threshold_probe_single_seed": {
     "fixed": 0.181,

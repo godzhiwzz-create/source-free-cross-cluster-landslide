@@ -20,6 +20,7 @@ from landslide_sfda.data import (
 from landslide_sfda.engine import collect_predictions, load_checkpoint, make_loader
 from landslide_sfda.metrics import (
     component_metrics,
+    paper_component_metrics,
     pixel_metrics,
     select_pixel_threshold,
 )
@@ -34,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--support-seed", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument(
+        "--component-protocol",
+        choices=("paper-overlap-4", "strict-one-to-one-8"),
+        default="paper-overlap-4",
+    )
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--no-amp", action="store_true")
     return parser.parse_args()
@@ -57,13 +63,19 @@ def prior_threshold(probabilities: np.ndarray, prior: float) -> float:
     )
 
 
-def report(probabilities, targets, threshold):
+def report(probabilities, targets, threshold, component_protocol):
+    if component_protocol == "paper-overlap-4":
+        component = paper_component_metrics(
+            probabilities, targets, threshold, iou_threshold=0.3
+        )
+    else:
+        component = component_metrics(
+            probabilities, targets, threshold, iou_threshold=0.3
+        )
     return {
         "threshold": threshold,
         "pixel": pixel_metrics(probabilities, targets, threshold).to_dict(),
-        "component": component_metrics(
-            probabilities, targets, threshold, iou_threshold=0.3
-        ).to_dict(),
+        "component": component.to_dict(),
     }
 
 
@@ -101,15 +113,31 @@ def main() -> None:
         "support_size": len(support),
         "support_seed": args.support_seed,
         "support_indices": [entry.index for entry in support],
-        "fixed": report(query_probabilities, query_targets, 0.5),
-        "support": report(query_probabilities, query_targets, support_threshold),
-        "oracle": report(query_probabilities, query_targets, oracle_threshold),
+        "component_protocol": args.component_protocol,
+        "fixed": report(
+            query_probabilities, query_targets, 0.5, args.component_protocol
+        ),
+        "support": report(
+            query_probabilities,
+            query_targets,
+            support_threshold,
+            args.component_protocol,
+        ),
+        "oracle": report(
+            query_probabilities,
+            query_targets,
+            oracle_threshold,
+            args.component_protocol,
+        ),
         "oracle_uses_query_labels": True,
     }
     if source_prior is not None:
         threshold = prior_threshold(query_probabilities, float(source_prior))
         payload["source_prior"] = report(
-            query_probabilities, query_targets, threshold
+            query_probabilities,
+            query_targets,
+            threshold,
+            args.component_protocol,
         ) | {"source_foreground_prior": source_prior}
     output = args.output or Path("results") / f"{args.held}_threshold_probe.json"
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -13,7 +13,7 @@ in the manuscript:
    decision threshold;
 3. compare full, decoder, segmentation-head, and BatchNorm-only adaptation;
 4. sweep target-label and optimization budgets; and
-5. evaluate both pixels and 8-connected landslide components.
+5. evaluate both pixels and patch-level landslide components.
 
 Source imagery is not required during adaptation. Only the source checkpoint
 and the labeled target support set are used.
@@ -29,8 +29,10 @@ and the labeled target support set are used.
   `BCE(pos_weight=5) + 0.5 * Dice`, batch size 16, 75 epochs.
 - **Adaptation default:** full fine-tuning, learning rate `1e-4`, weight decay
   `1e-4`, batch size 8, a small fixed optimization-step budget.
-- **Evaluation:** global pixel F1 and one-to-one component matching under
-  8-connectivity with component IoU greater than `0.3`.
+- **Evaluation:** global pixel F1. The historical paper tables use the exact
+  AutoDL implementation: SciPy-default 4-connectivity and independent
+  target/prediction overlap tests at component IoU greater than `0.3`. A
+  stricter 8-connected, greedy one-to-one audit protocol is also implemented.
 
 The manuscript reports a six-fold source-only pixel F1 of about `0.196`.
 Peeking at test labels to choose a global oracle threshold adds only about
@@ -45,13 +47,24 @@ Python 3.10 or newer is recommended.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[test]"
+pip install -e ".[test,data]"
 ```
 
 ## Data preparation
 
-Download Sen12Landslides from its official distribution and run its
-preprocessing so that each archive contains:
+Download the harmonized release from the
+[official dataset repository](https://huggingface.co/datasets/paulhoehn/Sen12Landslides)
+and extract the Sentinel-2 and optional ascending Sentinel-1 archives. Convert
+the official NetCDF files to the experiment's NPZ layout:
+
+```bash
+python scripts/preprocess_sen12.py \
+  --s2-root /path/to/data_harmonized/s2 \
+  --s1asc-root /path/to/data_harmonized/s1asc \
+  --output-dir /path/to/preprocessed_npz
+```
+
+The preprocessing output contains:
 
 ```text
 X: (N, 15, 14, 128, 128)
@@ -59,8 +72,8 @@ Y: (N, 128, 128)
 M_mod: (N, 15, 3)    # optional
 ```
 
-The 14 input channels must be ordered as 10 Sentinel-2 bands, 2 Sentinel-1
-bands, DEM, and SCL. Convert the archives to the memory-mapped layout:
+The 14 input channels are ordered as 10 Sentinel-2 bands, 2 Sentinel-1 bands,
+DEM, and SCL. Convert the archives to the memory-mapped layout:
 
 ```bash
 python scripts/convert_to_memmap.py \
@@ -108,17 +121,24 @@ python scripts/run_adaptation.py \
   --adapt-mode full \
   --support-sampling random \
   --threshold-mode cross-fit \
+  --support-draw 0 \
   --output results/Africa_k50.json
 ```
 
 Use `--adapt-mode decoder`, `head`, or `bn` for the parameter-scope probe.
 Use `--support-sampling positive-aware --threshold-mode support` to reproduce
-the screened-candidate budget-grid convention described in the paper.
+the budget-grid convention. Add
+`--component-protocol strict-one-to-one-8` for the stricter component audit;
+the default `paper-overlap-4` reproduces the historical table implementation.
 
 Run all six folds with the shell loop in
 [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md). The JSON outputs include
 the support indices, threshold, checkpoint metadata, pixel metrics, and
 component metrics required to audit each run.
+
+AutoDL source/result hashes, RNG streams, cluster counts, and protocol
+provenance are recorded in
+[docs/PROTOCOL_PROVENANCE.md](docs/PROTOCOL_PROVENANCE.md).
 
 ## Tests
 

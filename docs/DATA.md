@@ -1,7 +1,32 @@
 # Data contract
 
-The repository does not redistribute Sen12Landslides. Obtain the data under
-the terms of its official release and cite the dataset paper.
+The repository does not redistribute Sen12Landslides. Obtain the CC BY 4.0
+harmonized data from the
+[official Hugging Face release](https://huggingface.co/datasets/paulhoehn/Sen12Landslides)
+and cite the dataset paper. The
+[official code repository](https://github.com/PaulH97/Sen12Landslides)
+documents the original NetCDF format.
+
+## Official NetCDF to NPZ
+
+The paper runs used the harmonized release. Generate the intermediate NPZ
+files with:
+
+```bash
+python scripts/preprocess_sen12.py \
+  --s2-root /path/to/data_harmonized/s2 \
+  --s1asc-root /path/to/data_harmonized/s1asc \
+  --output-dir /path/to/preprocessed_npz
+```
+
+The Sentinel-1 argument is optional because the paper model excludes SAR.
+Preprocessing follows the AutoDL source: Sentinel-2 is divided by `10000`, DEM
+by `1000`, ascending Sentinel-1 is clipped to `[-30, 0]` dB and scaled, and
+SCL is converted to a clear-pixel indicator.
+
+The six clusters are a study-defined grouping, not an official dataset split.
+The exact mapping and paper patch counts are versioned in
+[`configs/region_to_cluster.json`](../configs/region_to_cluster.json).
 
 ## Preprocessed NPZ input
 
@@ -63,8 +88,9 @@ Every adaptation JSON records the exact support indices. Query evaluation
 excludes those support patches.
 
 - `random`: uniform target candidates, used by the deployable K50 recipe.
-- `positive-aware`: candidates known to contain at least one positive pixel,
-  used by the screened-candidate budget grid.
+- `positive-aware`: stratified sampling that preserves the target pool's
+  positive/negative patch ratio while forcing at least one positive patch,
+  matching the AutoDL budget-grid script.
 
 The support labels are the only target labels available to deployable
 adaptation and threshold estimation.
