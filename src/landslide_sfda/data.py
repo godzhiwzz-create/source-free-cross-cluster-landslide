@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import defaultdict
 import json
 from pathlib import Path
-import random
 from typing import Iterable, NamedTuple, Sequence
 
 import numpy as np
@@ -117,13 +116,13 @@ class ClusterEntryDataset(Dataset):
         y = np.asarray(self.data.Y[index], dtype=np.float32).copy()
         x = (x - self.mean) / (self.std + 1e-7)
         if self.augment:
-            if random.random() < 0.5:
+            if np.random.random() < 0.5:
                 x = x[:, :, :, ::-1].copy()
                 y = y[:, ::-1].copy()
-            if random.random() < 0.5:
+            if np.random.random() < 0.5:
                 x = x[:, :, ::-1, :].copy()
                 y = y[::-1, :].copy()
-            rotations = random.randrange(4)
+            rotations = int(np.random.randint(0, 4))
             if rotations:
                 x = np.rot90(x, rotations, axes=(2, 3)).copy()
                 y = np.rot90(y, rotations, axes=(0, 1)).copy()
@@ -200,19 +199,32 @@ def draw_support(
         raise ValueError(
             "support size must be positive and smaller than the target pool"
         )
-    rng = np.random.default_rng(seed)
+    # RandomState is intentional: the paper runs were generated with this
+    # legacy NumPy stream, so default_rng would draw different support sets.
+    rng = np.random.RandomState(seed)
     if strategy == "random":
         chosen = rng.choice(len(entries), size=size, replace=False)
         return [entries[int(index)] for index in chosen]
     if strategy == "positive-aware":
-        candidates = [entry for entry in entries if entry.positive_pixels > 0]
-        if len(candidates) < size:
-            raise ValueError(
-                f"positive-aware sampling requested {size} patches but only "
-                f"{len(candidates)} contain positives"
+        positives = [entry for entry in entries if entry.positive_pixels > 0]
+        negatives = [entry for entry in entries if entry.positive_pixels == 0]
+        positive_count = min(
+            len(positives),
+            max(1, int(round(size * len(positives) / max(len(entries), 1)))),
+        )
+        negative_count = min(size - positive_count, len(negatives))
+        if positive_count + negative_count < size:
+            raise ValueError("not enough positive and negative patches for support")
+        positive_indices = rng.choice(
+            len(positives), size=positive_count, replace=False
+        )
+        support = [positives[int(index)] for index in positive_indices]
+        if negative_count:
+            negative_indices = rng.choice(
+                len(negatives), size=negative_count, replace=False
             )
-        chosen = rng.choice(len(candidates), size=size, replace=False)
-        return [candidates[int(index)] for index in chosen]
+            support.extend(negatives[int(index)] for index in negative_indices)
+        return support
     raise ValueError(f"unknown support strategy: {strategy}")
 
 

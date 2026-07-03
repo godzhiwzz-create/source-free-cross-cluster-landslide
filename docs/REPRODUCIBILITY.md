@@ -15,7 +15,7 @@ for held in Africa Americas CentralAsia Europe Oceania SoutheastAsia; do
 done
 ```
 
-For the three-source-seed estimate, repeat with seeds `43` and `44`.
+For the three-source-seed estimate, repeat with seeds `123` and `777`.
 
 ## Threshold diagnosis
 
@@ -48,6 +48,7 @@ for mode in full decoder bn head; do
     --steps 20 \
     --adapt-mode "$mode" \
     --support-sampling positive-aware \
+    --support-draw 0 \
     --threshold-mode fixed \
     --output "results/Africa_${mode}.json"
 done
@@ -72,6 +73,7 @@ for k in 25 50 100; do
       --steps "$steps" \
       --adapt-mode full \
       --support-sampling positive-aware \
+      --support-draw 0 \
       --threshold-mode support \
       --output "results/Africa_k${k}_s${steps}.json"
   done
@@ -79,16 +81,27 @@ done
 ```
 
 The deployable recipe instead uses fully random support and five-fold cross-fit
-threshold estimation. Auxiliary cross-fit models never predict on samples used
-to update their weights. The final model is then initialized again from the
-source checkpoint and adapted on all K samples.
+threshold estimation. `--support-draw d` reproduces the AutoDL RNG streams:
+support seed `2000+d`, fold seed `400+d`, auxiliary-model seeds `10d+i`, and
+final-model seed `d`. Auxiliary cross-fit models never predict on samples used
+to update their weights. The final model is initialized again from the source
+checkpoint and adapted on all K samples.
 
 ## Metrics
 
 Pixel scores aggregate TP, FP, FN, and TN over the complete query pool before
-computing binary metrics. Connected components are extracted patch by patch
-with 8-connectivity. Predicted and ground-truth components are greedily matched
-one-to-one in descending IoU order when IoU is strictly greater than `0.3`.
+computing binary metrics.
+
+The result-generating AutoDL scripts used SciPy's default 4-connectivity and
+independent overlap tests: each ground-truth component is counted as detected
+when any predicted component has IoU greater than `0.3`, and predicted
+components are assessed independently for precision. This is exposed as
+`--component-protocol paper-overlap-4` and is the default so the repository can
+regenerate the historical tables.
+
+For a stricter audit, use `--component-protocol strict-one-to-one-8`. It applies
+8-connectivity and greedy one-to-one matching in descending IoU order. These
+two conventions must not be mixed when comparing component values.
 
 ## External boundary checks
 

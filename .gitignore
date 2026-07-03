@@ -18,3 +18,5 @@ results/*
 *.ckpt
 *.dat
 *.npz
+*.nc
+*.tar.gz

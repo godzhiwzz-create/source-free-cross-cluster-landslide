@@ -1,0 +1,41 @@
+{
+  "provenance": "Region grouping used by the AutoDL experiments. This is a study-defined geographic grouping, not an official Sen12Landslides split.",
+  "clusters": {
+    "Africa": [
+      "chimanimani"
+    ],
+    "Americas": [
+      "dominicamaria",
+      "usa_alaska",
+      "usa_puertorico"
+    ],
+    "CentralAsia": [
+      "china",
+      "kyrgyzstan1",
+      "kyrgyzstan2",
+      "nepal"
+    ],
+    "Europe": [
+      "italy"
+    ],
+    "Oceania": [
+      "newzealand"
+    ],
+    "SoutheastAsia": [
+      "hiroshima",
+      "hokkaido",
+      "indonesia",
+      "itogon",
+      "lanaodelnorte",
+      "thrissur"
+    ]
+  },
+  "paper_patch_counts": {
+    "Africa": 1133,
+    "Americas": 1368,
+    "CentralAsia": 2146,
+    "Europe": 5321,
+    "Oceania": 1163,
+    "SoutheastAsia": 2450
+  }
+}

@@ -28,6 +28,7 @@ from landslide_sfda.engine import (
 )
 from landslide_sfda.metrics import (
     component_metrics,
+    paper_component_metrics,
     pixel_metrics,
     select_pixel_threshold,
 )
@@ -39,7 +40,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--held", choices=CLUSTERS, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--support-size", type=int, default=50)
-    parser.add_argument("--support-seed", type=int, default=0)
+    parser.add_argument(
+        "--support-draw",
+        type=int,
+        default=0,
+        help="paper draw index; controls support, cross-fit, and model RNG streams",
+    )
+    parser.add_argument(
+        "--support-seed",
+        type=int,
+        default=None,
+        help="override the paper support RNG seed (normally derived from support-draw)",
+    )
     parser.add_argument(
         "--support-sampling",
         choices=("random", "positive-aware"),
@@ -60,6 +72,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--eval-batch-size", type=int, default=16)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument(
+        "--component-protocol",
+        choices=("paper-overlap-4", "strict-one-to-one-8"),
+        default="paper-overlap-4",
+        help="paper table convention or stricter audit convention",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--no-amp", action="store_true")
     return parser.parse_args()
@@ -103,7 +121,7 @@ def new_adapted_model(args, device, support, mean, std, seed):
 def cross_fit_threshold(args, device, support, mean, std) -> float:
     if args.cross_fit_folds < 2 or args.cross_fit_folds > len(support):
         raise ValueError("cross-fit-folds must be between 2 and support size")
-    rng = np.random.default_rng(args.support_seed)
+    rng = np.random.RandomState(400 + args.support_draw)
     order = rng.permutation(len(support))
     folds = np.array_split(order, args.cross_fit_folds)
     probabilities = []
@@ -120,7 +138,7 @@ def cross_fit_threshold(args, device, support, mean, std) -> float:
             train_entries,
             mean,
             std,
-            args.support_seed + fold_index + 1,
+            args.support_draw * 10 + fold_index,
         )
         probability, target = collect_predictions(
             model,
@@ -139,6 +157,14 @@ def cross_fit_threshold(args, device, support, mean, std) -> float:
     return threshold
 
 
+def component_report(probabilities, targets, threshold, protocol):
+    if protocol == "paper-overlap-4":
+        return paper_component_metrics(
+            probabilities, targets, threshold, iou_threshold=0.3
+        )
+    return component_metrics(probabilities, targets, threshold, iou_threshold=0.3)
+
+
 def main() -> None:
     args = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -146,10 +172,17 @@ def main() -> None:
     mean = checkpoint["mean11"]
     std = checkpoint["std11"]
     target_entries = index_cluster(args.data_root, args.held)
+    support_seed = args.support_seed
+    if support_seed is None:
+        support_seed = (
+            2000 + args.support_draw
+            if args.support_sampling == "random" and args.threshold_mode == "cross-fit"
+            else args.support_draw
+        )
     support = draw_support(
         target_entries,
         args.support_size,
-        seed=args.support_seed,
+        seed=support_seed,
         strategy=args.support_sampling,
     )
     query = exclude_entries(target_entries, support)
@@ -161,8 +194,11 @@ def main() -> None:
         amp=not args.no_amp,
     )
     source_pixel = pixel_metrics(source_probabilities, source_targets, 0.5)
-    source_component = component_metrics(
-        source_probabilities, source_targets, 0.5, iou_threshold=0.3
+    source_component = component_report(
+        source_probabilities,
+        source_targets,
+        0.5,
+        args.component_protocol,
     )
     del source_model
     if device.type == "cuda":
@@ -172,7 +208,7 @@ def main() -> None:
     else:
         threshold = 0.5
     model, trainable, losses = new_adapted_model(
-        args, device, support, mean, std, args.support_seed
+        args, device, support, mean, std, args.support_draw
     )
     if args.threshold_mode == "support":
         probabilities, targets = collect_predictions(
@@ -193,7 +229,8 @@ def main() -> None:
         "checkpoint": str(args.checkpoint),
         "source_epoch": checkpoint.get("epoch"),
         "support_size": len(support),
-        "support_seed": args.support_seed,
+        "support_draw": args.support_draw,
+        "support_rng_seed": support_seed,
         "support_sampling": args.support_sampling,
         "support_indices": [entry.index for entry in support],
         "query_size": len(query),
@@ -207,6 +244,7 @@ def main() -> None:
             args.cross_fit_folds if args.threshold_mode == "cross-fit" else None
         ),
         "threshold": threshold,
+        "component_protocol": args.component_protocol,
         "loss_first": losses[0] if losses else None,
         "loss_last": losses[-1] if losses else None,
         "source_at_0.5": {
@@ -214,8 +252,11 @@ def main() -> None:
             "component": source_component.to_dict(),
         },
         "pixel": pixel_metrics(query_probabilities, query_targets, threshold).to_dict(),
-        "component": component_metrics(
-            query_probabilities, query_targets, threshold, iou_threshold=0.3
+        "component": component_report(
+            query_probabilities,
+            query_targets,
+            threshold,
+            args.component_protocol,
         ).to_dict(),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
