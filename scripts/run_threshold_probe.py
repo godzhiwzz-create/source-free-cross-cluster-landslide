@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--held", choices=CLUSTERS, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--source-seed", required=True, type=int)
     parser.add_argument("--support-size", type=int, default=50)
     parser.add_argument("--support-seed", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=16)
@@ -109,6 +110,7 @@ def main() -> None:
     source_prior = checkpoint.get("metadata", {}).get("source_prior")
     payload = {
         "held": args.held,
+        "source_seed": args.source_seed,
         "checkpoint": str(args.checkpoint),
         "support_size": len(support),
         "support_seed": args.support_seed,

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "landslide-sfda"
-version = "0.1.0"
-description = "Paper-aligned source-free few-shot cross-cluster landslide segmentation"
+version = "1.0.0"
+description = "Paper-aligned diagnostics and repair for source-free cross-cluster landslide segmentation"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -25,6 +25,10 @@ test = ["pytest>=7.4"]
 data = [
   "netCDF4>=1.6",
   "xarray>=2023.1",
+]
+cas = [
+  "tifffile>=2023.7",
+  "Pillow>=10.0",
 ]
 
 [tool.setuptools]

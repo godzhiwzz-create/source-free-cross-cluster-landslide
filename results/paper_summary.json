@@ -1,5 +1,5 @@
 {
-  "provenance": "Values transcribed from the submitted manuscript, not generated during installation.",
+  "provenance": "Major-revision values regenerated from audited result artifacts; source-training seeds are reported separately.",
   "protocol": {
     "dataset": "Sen12Landslides",
     "clusters": 6,
@@ -10,29 +10,49 @@
     "component_iou_threshold": 0.3,
     "strict_audit_available": "8-connectivity with greedy one-to-one matching"
   },
-  "threshold_probe_single_seed": {
-    "fixed": 0.181,
-    "support": 0.212,
-    "source_prior": 0.220,
-    "oracle": 0.221,
-    "full_finetuning_fixed_threshold": 0.260
+  "bn_clean_k50_same_query": {
+    "seed42": {
+      "source_fixed": 0.181,
+      "query_label_oracle": 0.221,
+      "decoder_clean_fixed": 0.199,
+      "full_fixed": 0.260,
+      "full_minus_decoder_clean": 0.061,
+      "clusters_full_above_decoder_clean": "5/6"
+    },
+    "seed123": {
+      "source_fixed": 0.199,
+      "query_label_oracle": 0.256,
+      "decoder_clean_fixed": 0.220,
+      "full_fixed": 0.289,
+      "full_minus_decoder_clean": 0.069,
+      "clusters_full_above_decoder_clean": "6/6"
+    },
+    "seed777": {
+      "source_fixed": 0.180,
+      "query_label_oracle": 0.212,
+      "decoder_clean_fixed": 0.203,
+      "full_fixed": 0.270,
+      "full_minus_decoder_clean": 0.067,
+      "clusters_full_above_decoder_clean": "5/6"
+    }
   },
-  "parameter_scope_k50_fixed_threshold": {
-    "full": 0.260,
-    "decoder": 0.212,
-    "batchnorm": 0.210,
-    "head": 0.206
+  "budget_grid_fixed_threshold_six_cluster_mean": {
+    "seed42": {
+      "k25_steps10_20_50": [0.222, 0.243, 0.288],
+      "k50_steps10_20_50": [0.232, 0.260, 0.322],
+      "k100_steps10_20_50": [0.240, 0.271, 0.343]
+    },
+    "seed123": {
+      "k25_steps10_20_50": [0.242, 0.278, 0.319],
+      "k50_steps10_20_50": [0.255, 0.289, 0.347],
+      "k100_steps10_20_50": [0.257, 0.297, 0.366]
+    }
   },
-  "budget_grid_six_cluster_mean": {
-    "k25_steps10": 0.251,
-    "k25_steps20": 0.272,
-    "k25_steps50": 0.307,
-    "k50_steps10": 0.261,
-    "k50_steps20": 0.290,
-    "k50_steps50": 0.332,
-    "k100_steps50": 0.356
+  "budget_grid_support_threshold_sensitivity_20_updates": {
+    "seed42_k25_k50_k100": [0.272, 0.290, 0.305],
+    "seed123_k25_k50_k100": [0.298, 0.314, 0.327]
   },
-  "deployable_k50_cross_fit": {
+  "historical_k50_cross_fit_seed42": {
     "pixel_f1": 0.306,
     "source_component_recall": 0.116,
     "repair_component_recall": 0.205,
@@ -40,5 +60,39 @@
     "repair_component_f1": 0.171,
     "repair_component_quality": 0.096,
     "repair_false_alarms_per_patch": 3.258
+  },
+  "source_free_transductive_controls": {
+    "target_entropy": {
+      "seed42_source_to_adapted": [0.181, 0.004],
+      "seed123_source_to_adapted": [0.200, 0.014],
+      "seed777_source_to_adapted": [0.181, 0.008],
+      "clusters_improved": [0, 0, 0]
+    },
+    "class_balanced_pseudo_label": {
+      "seed42_source_to_adapted": [0.181, 0.249],
+      "seed123_source_to_adapted": [0.200, 0.250],
+      "seed777_source_to_adapted": [0.181, 0.228],
+      "clusters_improved": [4, 4, 5]
+    },
+    "access": "source-free, target-unlabelled, transductive; fixed final threshold 0.5"
+  },
+  "cas_single_run_directional_check": {
+    "protocol": "seed 0; 30 source epochs; K50 support excluded from query; 20 adaptation updates; finite candidate set",
+    "candidate_order": [
+      "source_0_5",
+      "query_label_oracle",
+      "threshold_only",
+      "decoder_fixed",
+      "full_fixed",
+      "full_recipe"
+    ],
+    "events": {
+      "Palu": [0.3214, 0.3215, 0.3134, 0.2178, 0.3513, 0.3547],
+      "Lombok": [0.2326, 0.3010, 0.3010, 0.3144, 0.3369, 0.3420],
+      "Hokkaido": [0.3987, 0.5221, 0.5221, 0.4202, 0.6293, 0.6332],
+      "Tiburon_S": [0.3539, 0.3539, 0.3525, 0.3179, 0.4714, 0.4710],
+      "Tiburon_P": [0.2651, 0.4823, 0.4823, 0.4609, 0.6136, 0.6736]
+    },
+    "interpretation": "One of the two full-network variants is highest within the reported finite set for every event; this is a single-run directional check."
   }
 }

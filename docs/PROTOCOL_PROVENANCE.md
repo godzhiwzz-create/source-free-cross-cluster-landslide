@@ -3,7 +3,7 @@
 This file records the AutoDL artifacts used to align the public implementation.
 No dataset copy, checkpoint, credential, or machine address is included.
 
-Audit date: 2026-07-03.
+Audit date: 2026-08-11.
 
 ## Source hashes
 
@@ -30,13 +30,23 @@ Audit date: 2026-07-03.
 ## Verified implementation details
 
 - Source checkpoints are fixed-budget epoch-75 `last.pt` checkpoints.
-- Source seeds are `42`, `123`, and `777`.
+- Three completed, audited source chains are reported: seeds `42`, `123`, and
+  `777`. All six folds in every reported chain reached the fixed epoch-75
+  endpoint under the same completion and provenance criteria.
 - The end-to-end recipe uses random K50 support, 20 full-fine-tuning steps,
   and five-fold out-of-fold threshold estimation.
 - Recipe draw `d` uses support RNG seed `2000+d`, cross-fit permutation seed
   `400+d`, auxiliary-model seeds `10d+i`, and final-model seed `d`.
-- The budget grid's positive-aware sampler preserves the target pool's
-  positive/negative patch ratio and forces at least one positive patch.
+- The budget grid's prevalence-stratified sampler separates positive and
+  negative tiles, samples each group in proportion to the full target pool,
+  and forces at least one positive tile. The historical CLI label
+  `positive-aware` is an exact alias, not an analyst-screening protocol.
+- The historical `decoder` and `head` modes freeze the declared weights but
+  use a global training-mode call, so BatchNorm running statistics in
+  weight-frozen modules can update. The revision's `decoder-clean` mode keeps
+  `en3`, `en4`, `center_in`, and `center_out` in evaluation mode and freezes
+  both their weights and BatchNorm buffers; `dc4`, `trans3`, `dc3`, and `final`
+  remain trainable.
 - Historical component tables use SciPy-default 4-connectivity and independent
   bidirectional overlap tests at IoU greater than `0.3`.
 - The separate strict component-chain diagnostic uses greedy one-to-one
@@ -56,3 +66,17 @@ Audit date: 2026-07-03.
 
 The six-cluster grouping is study-defined and is versioned in
 `configs/region_to_cluster.json`.
+
+## Major-revision evidence hashes
+
+| Artifact | SHA-256 |
+| --- | --- |
+| BN-clean runner | `b294d9e857ac8c39bc9cc0d776dc258cca8b3de2e9f841d1462f990ca3c9e868` |
+| BN-clean complete aggregate | `c7a89d4f4ed3477426a0be372040e0e37f76fb1d590fcebd7044fc2ff588bfa3` |
+| Source-free-control runner | `99780c158c85fbde857f442451f10998007ccf5e6c394acbd3c90269a7ba1832` |
+| Source-free-control complete aggregate | `ccd03c6e4c324d8be944ce30c2c2e063bb39e954c227cc0f3d50941430dc670c` |
+| Seed-777 BN-clean aggregate | `352c35dbb57feaa583bba58a7d756bd92d362ecfce8851c8684df1975fe98a54` |
+| Seed-777 source-free-control aggregate | `a278a69e9f65957e2685b70008f6ed2072067b8a494c5576c176845acae9c5a4` |
+
+These hashes identify private result artifacts used for manuscript audit; no
+dataset tile, checkpoint, credential, or private machine address is published.

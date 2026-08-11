@@ -16,6 +16,10 @@ from torch.utils.data import DataLoader
 from .model import UNet3DPaper
 
 
+ENCODER_LIKE_MODULES = ("en3", "en4", "center_in", "center_out")
+DECODER_HEAD_MODULES = ("dc4", "trans3", "dc3", "final")
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -124,7 +128,7 @@ def train_steps(
     criterion = criterion or SegmentationLoss()
     criterion = criterion.to(device)
     losses: list[float] = []
-    model.train()
+    set_adaptation_train_mode(model)
     iterator = iter(loader)
     for _ in range(steps):
         try:
@@ -150,13 +154,21 @@ def train_steps(
 
 
 def configure_adaptation(model: UNet3DPaper, mode: str) -> int:
-    """Select the trainable parameter scope used in the parameter probe."""
+    """Select trainable weights and record the associated model-state policy.
+
+    ``decoder`` reproduces the historical protocol: encoder-like weights are
+    frozen but a later global training-mode call permits their BatchNorm
+    running statistics to update. ``decoder-clean`` freezes both those weights
+    and their BatchNorm state by keeping the encoder-like modules in evaluation
+    mode during adaptation.
+    """
     for parameter in model.parameters():
         parameter.requires_grad = True
     if mode == "full":
         pass
-    elif mode == "decoder":
-        for module in (model.en3, model.en4, model.center_in, model.center_out):
+    elif mode in {"decoder", "decoder-clean"}:
+        for name in ENCODER_LIKE_MODULES:
+            module = getattr(model, name)
             for parameter in module.parameters():
                 parameter.requires_grad = False
     elif mode == "head":
@@ -173,9 +185,53 @@ def configure_adaptation(model: UNet3DPaper, mode: str) -> int:
                     parameter.requires_grad = True
     else:
         raise ValueError(f"unknown adaptation mode: {mode}")
+    model._landslide_adaptation_mode = mode
     return sum(
         parameter.numel() for parameter in model.parameters() if parameter.requires_grad
     )
+
+
+def set_adaptation_train_mode(model: UNet3DPaper) -> None:
+    """Apply the training/evaluation state required by the configured mode."""
+
+    model.train()
+    if getattr(model, "_landslide_adaptation_mode", None) == "decoder-clean":
+        for name in ENCODER_LIKE_MODULES:
+            getattr(model, name).eval()
+
+
+def adaptation_scope_metadata(mode: str) -> dict[str, object]:
+    """Return an explicit, serializable scope and BatchNorm-state description."""
+
+    if mode == "full":
+        return {
+            "trainable_modules": "all network modules",
+            "frozen_modules": [],
+            "batchnorm_state_policy": "ordinary training-mode updates throughout network",
+        }
+    if mode in {"decoder", "decoder-clean"}:
+        return {
+            "trainable_modules": list(DECODER_HEAD_MODULES),
+            "frozen_modules": list(ENCODER_LIKE_MODULES),
+            "batchnorm_state_policy": (
+                "frozen encoder-like modules remain in evaluation mode"
+                if mode == "decoder-clean"
+                else "historical global training mode; frozen-module running statistics may update"
+            ),
+        }
+    if mode == "head":
+        return {
+            "trainable_modules": ["final"],
+            "frozen_modules": "all remaining weight tensors",
+            "batchnorm_state_policy": "historical global training mode; frozen-module running statistics may update",
+        }
+    if mode == "bn":
+        return {
+            "trainable_modules": "all BatchNorm affine parameters",
+            "frozen_modules": "all non-BatchNorm weight tensors",
+            "batchnorm_state_policy": "ordinary training-mode running-statistic updates",
+        }
+    raise ValueError(f"unknown adaptation mode: {mode}")
 
 
 def load_checkpoint(

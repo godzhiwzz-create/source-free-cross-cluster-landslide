@@ -87,10 +87,30 @@ in-distribution checks but is not applied to the paper's LOCO source models.
 Every adaptation JSON records the exact support indices. Query evaluation
 excludes those support patches.
 
-- `random`: uniform target candidates, used by the deployable K50 recipe.
-- `positive-aware`: stratified sampling that preserves the target pool's
-  positive/negative patch ratio while forcing at least one positive patch,
-  matching the AutoDL budget-grid script.
+- `random`: uniform target candidates, used by the cross-fitted K50 recipe.
+- `stratified-prevalence`: separates positive and negative tiles, then samples
+  each group in proportion to the full target pool while forcing at least one
+  positive tile. This matches the AutoDL budget-grid script but is not a
+  measured analyst-screening workflow. The legacy CLI name `positive-aware`
+  is retained as an exact alias.
 
-The support labels are the only target labels available to deployable
-adaptation and threshold estimation.
+The support labels are the only target labels available to the query-label-free
+adaptation and threshold-estimation pipeline.
+
+## CAS directional-check input
+
+Install the optional image dependencies with `pip install -e '.[cas]'`. The
+CAS runner expects one directory per event and searches recursively for paired
+TIFF files in sibling `img/` and `mask/` directories:
+
+```text
+cas_root/
+  palu_x/.../img/example.tif
+  palu_x/.../mask/example.tif
+  Lombok_x/.../img/example.tif
+  Lombok_x/.../mask/example.tif
+```
+
+RGB images are resized to 128 by 128 and broadcast to 15 temporal frames. This
+is a separate I/O contract from Sen12Landslides; its absolute scores are not
+numerically compared with the 11-channel experiment.

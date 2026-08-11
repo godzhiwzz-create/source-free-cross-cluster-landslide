@@ -19,6 +19,7 @@ from landslide_sfda.data import (
     index_cluster,
 )
 from landslide_sfda.engine import (
+    adaptation_scope_metadata,
     collect_predictions,
     configure_adaptation,
     load_checkpoint,
@@ -39,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-root", type=Path, required=True)
     parser.add_argument("--held", choices=CLUSTERS, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--source-seed", required=True, type=int)
     parser.add_argument("--support-size", type=int, default=50)
     parser.add_argument(
         "--support-draw",
@@ -54,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--support-sampling",
-        choices=("random", "positive-aware"),
+        choices=("random", "stratified-prevalence", "positive-aware"),
         default="random",
     )
     parser.add_argument(
@@ -64,7 +66,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--cross-fit-folds", type=int, default=5)
     parser.add_argument(
-        "--adapt-mode", choices=("full", "decoder", "head", "bn"), default="full"
+        "--adapt-mode",
+        choices=("full", "decoder-clean", "decoder", "head", "bn"),
+        default="full",
     )
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
@@ -226,6 +230,7 @@ def main() -> None:
     )
     payload = {
         "held": args.held,
+        "source_seed": args.source_seed,
         "checkpoint": str(args.checkpoint),
         "source_epoch": checkpoint.get("epoch"),
         "support_size": len(support),
@@ -236,6 +241,7 @@ def main() -> None:
         "query_size": len(query),
         "adapt_mode": args.adapt_mode,
         "trainable_parameters": trainable,
+        "adaptation_scope": adaptation_scope_metadata(args.adapt_mode),
         "steps": args.steps,
         "learning_rate": args.learning_rate,
         "weight_decay": args.weight_decay,

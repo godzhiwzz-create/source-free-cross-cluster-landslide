@@ -1,15 +1,25 @@
 cff-version: 1.2.0
-message: "Please cite the associated manuscript when using this code."
-title: "Source-Free Few-Shot Cross-Cluster Landslide Segmentation for Emergency Response: A Failure-Analysis Diagnosis and Methodological Study"
+message: "Please cite this software release when using the paper-aligned code."
+title: "Diagnosing Landslide Segmentation Across Geographic Clusters with Limited Target Annotations and No Access to Source Imagery"
 type: software
+abstract: "Paper-aligned code and reproducibility workflows for controlled source-free cross-cluster landslide-segmentation diagnostics, limited-target-annotation repair, and target-unlabelled controls."
 authors:
   - family-names: Wang
     given-names: Zhuangzhi
+    affiliation: University of Emergency Management
   - family-names: Weng
     given-names: Cun
+    affiliation: University of Emergency Management
   - family-names: Chen
     given-names: Xinfang
+    affiliation: University of Emergency Management
 repository-code: "https://github.com/godzhiwzz-create/source-free-cross-cluster-landslide"
 license: MIT
-version: 0.1.0
-date-released: 2026-07-01
+version: 1.0.0
+date-released: 2026-08-11
+keywords:
+  - landslide segmentation
+  - source-free domain adaptation
+  - cross-cluster transfer
+  - remote sensing
+  - limited target annotations

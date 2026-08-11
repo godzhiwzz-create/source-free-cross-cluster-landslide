@@ -133,6 +133,56 @@ class ClusterEntryDataset(Dataset):
         }
 
 
+class ClusterInputDataset(Dataset):
+    """Load normalized target inputs without opening the target-label memmap."""
+
+    def __init__(
+        self,
+        root: str | Path,
+        cluster: str,
+        indices: Sequence[int],
+        mean: Sequence[float],
+        std: Sequence[float],
+        *,
+        augment: bool = False,
+    ) -> None:
+        root = Path(root)
+        meta = json.loads((root / f"{cluster}.meta.json").read_text())
+        n = int(meta["n_patches"])
+        x_shape = (n, *meta["X_shape_per_patch"])
+        self.X = np.memmap(
+            root / f"{cluster}.X.dat", dtype=np.float16, mode="r", shape=x_shape
+        )
+        self.indices = list(indices)
+        self.mean = np.asarray(mean, dtype=np.float32).reshape(1, -1, 1, 1)
+        self.std = np.asarray(std, dtype=np.float32).reshape(1, -1, 1, 1)
+        self.augment = augment
+
+    def __len__(self) -> int:
+        return len(self.indices)
+
+    def __getitem__(self, item: int) -> dict[str, torch.Tensor]:
+        index = self.indices[item]
+        x = np.asarray(self.X[index], dtype=np.float32)[:, SELECTED_CHANNELS].copy()
+        x = (x - self.mean) / (self.std + 1e-7)
+        if self.augment:
+            if np.random.random() < 0.5:
+                x = x[:, :, :, ::-1].copy()
+            if np.random.random() < 0.5:
+                x = x[:, :, ::-1, :].copy()
+            rotations = int(np.random.randint(0, 4))
+            if rotations:
+                x = np.rot90(x, rotations, axes=(2, 3)).copy()
+        return {"x": torch.from_numpy(x), "index": torch.tensor(index)}
+
+
+def input_indices(root: str | Path, cluster: str) -> list[int]:
+    """Return all target indices from metadata without inspecting target labels."""
+
+    meta = json.loads((Path(root) / f"{cluster}.meta.json").read_text())
+    return list(range(int(meta["n_patches"])))
+
+
 def build_dataset(
     root: str | Path,
     entries: Sequence[Entry],
@@ -205,7 +255,7 @@ def draw_support(
     if strategy == "random":
         chosen = rng.choice(len(entries), size=size, replace=False)
         return [entries[int(index)] for index in chosen]
-    if strategy == "positive-aware":
+    if strategy in {"positive-aware", "stratified-prevalence"}:
         positives = [entry for entry in entries if entry.positive_pixels > 0]
         negatives = [entry for entry in entries if entry.positive_pixels == 0]
         positive_count = min(
