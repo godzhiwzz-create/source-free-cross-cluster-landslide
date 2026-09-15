@@ -1,239 +1,149 @@
-# Reproducibility notes
+# Running the experiments
 
-## Six-fold source training
+Prepare the [data](DATA.md) first. All commands run from the repository root.
+Each script supports `--help`; result paths below are output files to be generated.
+Use a distinct output filename for every cluster, source seed, support draw, and condition.
 
-The source checkpoint used by the paper is the final checkpoint after a fixed
-75-epoch budget. Do not select a checkpoint by held-out test F1.
-
-```bash
-for held in Africa Americas CentralAsia Europe Oceania SoutheastAsia; do
-  python scripts/train_source.py \
-    --data-root /path/to/sen12_memmap \
-    --held "$held" \
-    --output-dir outputs \
-    --seed 42
-done
-```
-
-Repeat with seeds `123` and `777`. Every reported chain contains all six folds
-at the fixed epoch-75 endpoint under the same completion criteria.
-
-## Threshold diagnosis
+## Source training
 
 ```bash
 for held in Africa Americas CentralAsia Europe Oceania SoutheastAsia; do
-  python scripts/run_threshold_probe.py \
-    --data-root /path/to/sen12_memmap \
-    --held "$held" \
-    --checkpoint "outputs/source_${held}_seed42/last.pt" \
-    --source-seed 42 \
-    --support-size 50 \
-    --support-seed 0 \
-    --output "results/${held}_threshold.json"
+  python scripts/train_source.py --data-root /path/to/sen12_memmap \
+    --held "$held" --output-dir outputs --seed 42
 done
 ```
 
-The `oracle` field deliberately uses query labels and is only an upper-bound
-diagnostic. It is not a deployment result.
+Repeat for source seeds `123` and `777`. Use the final epoch-75 `last.pt`,
+not a checkpoint selected by held-out performance.
 
-## Parameter-scope probe
-
-Run K50 with a fixed threshold while changing only the trainable scope:
+## Threshold and parameter scope
 
 ```bash
-for mode in full decoder-clean decoder bn head; do
-  python scripts/run_adaptation.py \
-    --data-root /path/to/sen12_memmap \
-    --held Africa \
-    --checkpoint outputs/source_Africa_seed42/last.pt \
-    --source-seed 42 \
-    --support-size 50 \
-    --steps 20 \
-    --adapt-mode "$mode" \
-    --support-sampling stratified-prevalence \
-    --support-draw 0 \
-    --threshold-mode fixed \
-    --output "results/Africa_${mode}.json"
-done
+python scripts/run_threshold_probe.py --data-root /path/to/sen12_memmap \
+  --held Africa --checkpoint outputs/source_Africa_seed42/last.pt \
+  --source-seed 42 --support-size 50 --support-seed 0 \
+  --output results/Africa_threshold.json
+
+python scripts/run_bn_clean_comparison.py --data-root /path/to/sen12_memmap \
+  --held Africa --checkpoint outputs/source_Africa_seed42/last.pt \
+  --source-seed 42 --support-size 50 --support-draw 0 --steps 20 \
+  --output results/bn_clean/Africa_seed42_draw0.json
 ```
 
-Repeat for every cluster, three support draws, and source seeds 42, 123, and
-777. The
-full mode updates exactly 6,161,793 parameters. Both decoder modes update
-1,826,881 parameters in `dc4`, `trans3`, `dc3`, and `final`; `decoder-clean`
-also keeps `en3`, `en4`, `center_in`, and `center_out` in evaluation mode so
-their BatchNorm buffers remain fixed. Historical `decoder` retains the global
-training-state behaviour. BN and head update approximately 0.003M and 0.001M
-weight parameters, respectively, while historical global training mode can
-still update BatchNorm buffers outside those weight scopes.
+Run the paired comparison for all six clusters, three source seeds, and draws
+`0..2` (54 cells). All conditions share the support-excluded query pool.
+The query-label oracle is a diagnostic upper bound, not a deployable threshold.
 
-The revision's claim-defining paired cell can be generated directly:
+Individual conditions use `scripts/run_adaptation.py --adapt-mode MODE`:
 
-```bash
-python scripts/run_bn_clean_comparison.py \
-  --data-root /path/to/sen12_memmap \
-  --held Africa \
-  --checkpoint outputs/source_Africa_seed42/last.pt \
-  --source-seed 42 \
-  --support-size 50 \
-  --support-draw 0 \
-  --steps 20 \
-  --output results/Africa_seed42_draw0_bn_clean.json
-```
+| Mode | Trainable weights | BatchNorm state |
+| --- | --- | --- |
+| `full` | Entire network (6,161,793 parameters) | Updates throughout |
+| `decoder-clean` | `dc4`, `trans3`, `dc3`, `final` (1,826,881 parameters) | Encoder-like state frozen |
+| `decoder` | Same weights as `decoder-clean` | Global training mode |
+| `head` | `final` | Global training mode |
+| `bn` | BatchNorm affine parameters | Global training mode |
 
-Run this for draws 0--2, all six clusters, and all three completed source
-seeds. The
-query-label oracle in each JSON is a diagnostic ceiling, not a deployable row.
+The encoder-like modules are `en3`, `en4`, `center_in`, and `center_out`.
+Global training mode can update BatchNorm buffers even where weights are frozen.
 
-## Label/step budget grid
-
-The manuscript's primary grid uses prevalence-stratified support sampling and
-the fixed threshold 0.5. K is a tile count, not measured annotation time:
+## Label and step budgets
 
 ```bash
 for k in 25 50 100; do
   for steps in 10 20 50; do
-    python scripts/run_adaptation.py \
-      --data-root /path/to/sen12_memmap \
-      --held Africa \
-      --checkpoint outputs/source_Africa_seed42/last.pt \
-      --source-seed 42 \
-      --support-size "$k" \
-      --steps "$steps" \
-      --adapt-mode full \
-      --support-sampling stratified-prevalence \
-      --support-draw 0 \
-      --threshold-mode fixed \
-      --output "results/Africa_k${k}_s${steps}_fixed.json"
+    for threshold in fixed support; do
+      python scripts/run_adaptation.py --data-root /path/to/sen12_memmap \
+        --held Africa --checkpoint outputs/source_Africa_seed42/last.pt \
+        --source-seed 42 --support-size "$k" --steps "$steps" \
+        --adapt-mode full --support-sampling stratified-prevalence \
+        --support-draw 0 --threshold-mode "$threshold" \
+        --output "results/budget_complete/Africa_seed42_draw0_k${k}_s${steps}_${threshold}.json"
+    done
   done
 done
 ```
 
-Repeat the grid with `--threshold-mode support` to generate the separately
-reported support-selected-threshold sensitivity analysis. The cross-fitted
-query-label-free recipe instead uses fully random support and five-fold
-cross-fit threshold estimation. `--support-draw d` reproduces the AutoDL RNG streams:
-support seed `2000+d`, fold seed `400+d`, auxiliary-model seeds `10d+i`, and
-final-model seed `d`. Auxiliary cross-fit models never predict on samples used
-to update their weights. The final model is initialized again from the source
-checkpoint and adapted on all K samples.
+Repeat across six clusters, seeds `42/123`, and draws `0..2`. The primary grid
+uses threshold `0.5`; the `support` mode gives the separate support-selected
+threshold comparison (648 cells across both threshold modes). K counts tiles.
+Support identities and query pools may differ across K.
 
-## Target-unlabelled source-free controls
+The [K50 recipe](../README.md#run) uses random support and five-fold cross-fit
+threshold estimation. `--support-draw d` uses the following RNG streams:
+support `2000+d`, fold permutation `400+d`, auxiliary-model seeds `10d+i`, and
+final-model seed `d`. Auxiliary models predict only on their held-out support
+folds. The final model restarts from the source checkpoint and uses all K tiles.
 
-These controls are transductive: they adapt on the same unlabelled query images
-that are evaluated after adaptation. They use no source images and no target
-labels during optimization. To reproduce the revision comparison on the same
-support-excluded query identities, first convert a completed K50 result into a
-query manifest:
+## Target-unlabelled controls
+
+Build the query manifest from an adaptation result with recorded support indices:
 
 ```bash
-python scripts/make_query_manifest.py \
-  --data-root /path/to/sen12_memmap \
-  --held Africa \
-  --support-result results/Africa_k50_draw0.json \
+python scripts/make_query_manifest.py --data-root /path/to/sen12_memmap \
+  --held Africa --support-result results/Africa_k50.json \
   --output results/Africa_query_draw0.json
-```
 
-Run one complete target-data pass for each control:
-
-```bash
 for method in target-entropy class-balanced-pseudo; do
-  python scripts/run_source_free_control.py \
-    --data-root /path/to/sen12_memmap \
-    --held Africa \
-    --checkpoint outputs/source_Africa_seed42/last.pt \
-    --source-seed 42 \
-    --method "$method" \
-    --query-indices results/Africa_query_draw0.json \
-    --seed 0 \
-    --learning-rate 1e-4 \
-    --weight-decay 1e-4 \
-    --batch-size 8 \
-    --output "results/Africa_${method}_seed42.json"
+  python scripts/run_source_free_control.py --data-root /path/to/sen12_memmap \
+    --held Africa --checkpoint outputs/source_Africa_seed42/last.pt \
+    --source-seed 42 --method "$method" --query-indices results/Africa_query_draw0.json \
+    --seed 0 --learning-rate 1e-4 --weight-decay 1e-4 --batch-size 8 \
+    --output "results/source_free_controls/Africa_${method}_seed42.json"
 done
 ```
 
-Both controls update the full network and evaluate the final state at threshold
-0.5. Entropy minimization uses every query pixel. The pseudo-label control
-freezes the source predictions before adaptation, predicts classes at 0.5, and
-retains exactly `ceil(0.2 * n_class_pixels)` highest-confidence pixels within
-each predicted class. Static pseudo labels and selection masks receive the same
-flips and rotations as their input tile. No teacher, mask, threshold, or pseudo
-label is refreshed after optimization starts.
+Each control makes one full pass over the unlabelled query images, updates the
+full network, and evaluates at threshold `0.5`. This transductive access differs
+from labelled-support adaptation. Repeat for six clusters and three source seeds
+(36 cells across the two methods).
 
-The controls are unequal-supervision context for the labelled-support K50
-experiment and must not be reported as an unqualified head-to-head ranking.
+Entropy minimization uses every query pixel. Class-balanced pseudo labels are
+fixed before adaptation: classes use threshold `0.5`, and the highest-confidence
+`ceil(0.2 * n_class_pixels)` pixels are retained within each predicted class.
+Labels and selection masks receive the same flips/rotations as the input.
+They are not refreshed during optimization; target labels are opened only for evaluation.
 
-## Revision aggregation
-
-Store the 54 BN-clean cells, the 648 K25/K50/K100 budget cells spanning 10, 20,
-and 50 updates under both fixed and support-selected thresholds, and the 36
-target-unlabelled control cells in separate directories. The primary manuscript
-table uses the fixed-threshold rows; support-selected rows are a sensitivity
-analysis. The budget grid remains the frozen two-chain seed-42/123 campaign;
-seed 777 was added only to the claim-defining BN-clean comparison and the
-source-free controls.
-Regenerate
-the revision summary with validation of source seed, cluster, support redraw,
-epoch, sampler, trainable scope, frozen-state invariant, and expected cell
-counts:
+## Aggregate outputs
 
 ```bash
 python scripts/aggregate_revision_results.py \
-  --bn-clean-dir results/bn_clean \
-  --budget-dir results/budget_complete \
+  --bn-clean-dir results/bn_clean --budget-dir results/budget_complete \
   --source-free-dir results/source_free_controls \
-  --output results/revision_aggregate.json
+  --output results/aggregate.json
 ```
 
-The aggregator keeps source-training seeds separate, averages the three support
-redraws within each cluster, and only then computes an unweighted arithmetic
-mean across the six clusters.
+The aggregator validates the 54 paired, 648 budget, and 36 control cells,
+including seeds, epochs, sampling, parameter scope, thresholds, and frozen states.
+It keeps source seeds separate, averages support draws within cluster, then
+weights the six clusters equally. The budget grid uses two source seeds;
+the paired comparison and unlabelled controls use three.
 
 ## Metrics
 
-Pixel scores aggregate TP, FP, FN, and TN over the complete query pool before
-computing binary metrics.
+Pixel metrics use TP, FP, FN, and TN summed over the complete query pool.
+The paper component metric uses 4-connectivity and independent overlap tests
+at IoU greater than `0.3`: targets and predictions are matched independently
+for recall and precision. This is `--component-protocol paper-overlap-4` (default).
 
-The result-generating AutoDL scripts used SciPy's default 4-connectivity and
-independent overlap tests: each ground-truth component is counted as detected
-when any predicted component has IoU greater than `0.3`, and predicted
-components are assessed independently for precision. This is exposed as
-`--component-protocol paper-overlap-4` and is the default so the repository can
-regenerate the historical tables.
+`--component-protocol strict-one-to-one-8` instead uses 8-connectivity and greedy
+one-to-one matching in descending IoU order. Keep these two metric conventions separate.
 
-For a stricter audit, use `--component-protocol strict-one-to-one-8`. It applies
-8-connectivity and greedy one-to-one matching in descending IoU order. These
-two conventions must not be mixed when comparing component values.
-
-## External boundary checks
-
-The single-run CAS check freezes the historical candidate sequence but changes
-the I/O adapter: RGB single-date images are resized to 128 pixels and broadcast
-to 15 temporal frames. It trains each leave-one-event-out source model for 30
-epochs with seed 0, draws K50 support, excludes support from the query, and runs
-20 adaptation updates. The decoder row intentionally reproduces the historical
-global-training-mode BatchNorm policy and is not the BN-clean Sen12 condition.
+## CAS
 
 ```bash
-python scripts/run_cas_directional_check.py \
-  --data-root /path/to/cas_root \
-  --source-epochs 30 \
-  --support-size 50 \
-  --adaptation-steps 20 \
-  --seed 0 \
-  --checkpoint-dir outputs/cas_source \
-  --output results/cas_directional_check.json
+python scripts/run_cas_directional_check.py --data-root /path/to/cas_root \
+  --source-epochs 30 --support-size 50 --adaptation-steps 20 --seed 0 \
+  --checkpoint-dir outputs/cas_source --output results/cas_directional_check.json
 ```
 
-Use repeated `--event NAME=relative_directory` arguments if the event directory
-names differ from the historical defaults. The output records absolute scores,
-train/held/support/query counts, support identities, checkpoint hashes, run
-count, the query-label oracle designation, and finite-candidate regret. The
-result is a directional cross-dataset check, not metric comparability with
-Sen12Landslides or a universal strategy validation.
+Use repeated `--event NAME=relative_directory` arguments for other directory names.
+The runner uses the [CAS input format](DATA.md#cas-input), trains each leave-one-event-out
+source model, excludes support from query, and evaluates the fixed candidate set.
+Its decoder condition uses global-training-mode BatchNorm, not `decoder-clean`.
+Outputs include scores, sample counts, support identities, checkpoint hashes,
+the oracle designation, and finite-candidate regret. The paper uses one seed;
+this is a directional cross-dataset comparison.
 
-The Prithvi-EO check uses external pretrained weights and a multispectral band
-projection that is not band-wise equivalent to the 11-channel 3D U-Net input.
-Because those assets are not shipped here, the Prithvi-EO check is not
-represented as an end-to-end command in this release.
+Prithvi-EO weights and its multispectral band projection are external assets
+and are not bundled as an end-to-end runnable experiment here.

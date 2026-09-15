@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and aggregate the paper-facing Scientific Reports revision cells."""
+"""Validate and aggregate paired comparisons, budget grids, and controls."""
 
 from __future__ import annotations
 

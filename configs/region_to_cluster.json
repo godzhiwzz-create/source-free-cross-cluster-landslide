@@ -1,5 +1,5 @@
 {
-  "provenance": "Region grouping used by the AutoDL experiments. This is a study-defined geographic grouping, not an official Sen12Landslides split.",
+  "provenance": "Region grouping used in the paper. This is a study-defined geographic grouping, not an official Sen12Landslides split.",
   "clusters": {
     "Africa": [
       "chimanimani"

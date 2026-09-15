@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one paired source/oracle/BN-clean-decoder/full revision cell."""
+"""Run one paired source/oracle/BN-clean-decoder/full comparison."""
 
 from __future__ import annotations
 

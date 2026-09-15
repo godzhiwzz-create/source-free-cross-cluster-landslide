@@ -139,7 +139,7 @@ def _component_counts(
 def _overlap_component_counts(
     prediction: np.ndarray, target: np.ndarray, iou_threshold: float
 ) -> tuple[int, int, int, int]:
-    """Match every component independently, mirroring the AutoDL table script."""
+    """Match every component independently using the paper metric convention."""
     # No structure argument is intentional. SciPy's 2-D default is
     # 4-connectivity, which is the implementation that generated the tables.
     pred_labels, pred_count = ndimage.label(prediction)

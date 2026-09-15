@@ -1,16 +1,10 @@
-# Data contract
+# Data preparation
 
-The repository does not redistribute Sen12Landslides. Obtain the CC BY 4.0
-harmonized data from the
-[official Hugging Face release](https://huggingface.co/datasets/paulhoehn/Sen12Landslides)
-and cite the dataset paper. The
-[official code repository](https://github.com/PaulH97/Sen12Landslides)
+Obtain the harmonized data from the [official Sen12Landslides release](https://huggingface.co/datasets/paulhoehn/Sen12Landslides).
+The dataset is not redistributed here. Its [source repository](https://github.com/PaulH97/Sen12Landslides)
 documents the original NetCDF format.
 
-## Official NetCDF to NPZ
-
-The paper runs used the harmonized release. Generate the intermediate NPZ
-files with:
+## Convert NetCDF to NPZ
 
 ```bash
 python scripts/preprocess_sen12.py \
@@ -19,89 +13,52 @@ python scripts/preprocess_sen12.py \
   --output-dir /path/to/preprocessed_npz
 ```
 
-The Sentinel-1 argument is optional because the paper model excludes SAR.
-Preprocessing follows the AutoDL source: Sentinel-2 is divided by `10000`, DEM
-by `1000`, ascending Sentinel-1 is clipped to `[-30, 0]` dB and scaled, and
-SCL is converted to a clear-pixel indicator.
+The Sentinel-1 argument is optional; the model excludes SAR. Preprocessing applies
+the following scaling: Sentinel-2 is divided by `10000`, DEM by `1000`, and ascending
+Sentinel-1 is clipped to `[-30, 0]` dB and scaled. SCL becomes a clear-pixel indicator.
+The study-defined geographic grouping is in [region_to_cluster.json](../configs/region_to_cluster.json).
 
-The six clusters are a study-defined grouping, not an official dataset split.
-The exact mapping and paper patch counts are versioned in
-[`configs/region_to_cluster.json`](../configs/region_to_cluster.json).
+## Convert NPZ to memory maps
 
-## Preprocessed NPZ input
+```bash
+python scripts/convert_to_memmap.py \
+  --input-dir /path/to/preprocessed_npz \
+  --output-dir /path/to/sen12_memmap
+```
 
-`scripts/convert_to_memmap.py` accepts one or more NPZ archives per geographic
-cluster. The default filename pattern is `<cluster>__*.npz`.
-
-Each archive must contain:
+The default input pattern is `<cluster>__*.npz`. Each archive contains:
 
 | Key | Shape | Meaning |
 | --- | --- | --- |
-| `X` | `(N, T, 14, H, W)` | multi-temporal inputs |
-| `Y` | `(N, H, W)` | binary landslide masks |
-| `M_mod` | `(N, T, 3)` | optional modality availability |
+| `X` | `(N, T, 14, H, W)` | Inputs |
+| `Y` | `(N, H, W)` | Binary masks |
+| `M_mod` | `(N, T, 3)` | Optional modality availability |
 
-The paper uses `T=15` and `H=W=128`. The channel order is:
+Use `T=15`, `H=W=128`. Channels `0..9` are Sentinel-2, `10..11` are Sentinel-1
+VV/VH, `12` is DEM, and `13` is SCL. Only `0..9` and `12` enter the model;
+the converter requires all 14 channels to preserve the channel ordering.
 
-| Index | Data |
-| --- | --- |
-| `0..9` | ten Sentinel-2 bands |
-| `10..11` | Sentinel-1 VV/VH |
-| `12` | DEM |
-| `13` | SCL |
+Each cluster produces `Africa.X.dat`, `Africa.Y.dat`, `Africa.M.dat`, and
+`Africa.meta.json` (with the corresponding cluster name). `X` uses `float16`;
+`Y` and `M` use `uint8`. Pass this directory as `--data-root`.
 
-Only indices `0..9` and `12` enter the 3D U-Net. The conversion script rejects
-inputs that do not contain 14 channels so that a silent band-order mismatch
-does not contaminate the experiment.
+## Data selection
 
-## Memory-mapped output
+- Normalization statistics use only the five source clusters in each fold.
+- Source training uses the complete five-cluster patch pools. The optional
+  `index_cluster(..., labeled_only=True)` filter is not used for LOCO training.
+- Adaptation JSON files record support indices; these tiles are excluded from query evaluation.
+- `random` samples target tiles uniformly and is used for the cross-fitted K50 recipe.
+- `stratified-prevalence` samples positive and negative tiles in proportion to the
+  target pool while forcing at least one positive tile. This is the budget-grid
+  sampling rule, not a measured analyst-screening workflow. `positive-aware` is
+  an exact CLI alias. K counts tiles, not annotation time.
+- Only support labels are used for query-label-free adaptation and threshold estimation.
 
-For each of the six clusters, conversion produces:
+## CAS input
 
-```text
-Africa.X.dat
-Africa.Y.dat
-Africa.M.dat
-Africa.meta.json
-...
-```
-
-`X` is stored as `float16`, `Y` and `M` as `uint8`. Metadata records the number
-of patches and the per-patch shapes. All training and evaluation scripts take
-this directory through `--data-root`; no machine-specific path is embedded in
-the code.
-
-## Leakage control
-
-Normalization statistics are recomputed for every leave-one-cluster-out fold
-from its five training clusters only. The held-out cluster contributes neither
-images nor labels to normalization.
-
-Source training uses the complete five-cluster patch pools. The optional
-Landslide Detection benchmark filter, where a labeled patch contains more than
-50 landslide pixels, is exposed by `index_cluster(..., labeled_only=True)` for
-in-distribution checks but is not applied to the paper's LOCO source models.
-
-## Support/query split
-
-Every adaptation JSON records the exact support indices. Query evaluation
-excludes those support patches.
-
-- `random`: uniform target candidates, used by the cross-fitted K50 recipe.
-- `stratified-prevalence`: separates positive and negative tiles, then samples
-  each group in proportion to the full target pool while forcing at least one
-  positive tile. This matches the AutoDL budget-grid script but is not a
-  measured analyst-screening workflow. The legacy CLI name `positive-aware`
-  is retained as an exact alias.
-
-The support labels are the only target labels available to the query-label-free
-adaptation and threshold-estimation pipeline.
-
-## CAS directional-check input
-
-Install the optional image dependencies with `pip install -e '.[cas]'`. The
-CAS runner expects one directory per event and searches recursively for paired
-TIFF files in sibling `img/` and `mask/` directories:
+Install `pip install -e '.[cas]'`. The CAS runner searches each event directory
+recursively for paired TIFF files in sibling `img/` and `mask/` directories:
 
 ```text
 cas_root/
@@ -111,6 +68,5 @@ cas_root/
   Lombok_x/.../mask/example.tif
 ```
 
-RGB images are resized to 128 by 128 and broadcast to 15 temporal frames. This
-is a separate I/O contract from Sen12Landslides; its absolute scores are not
-numerically compared with the 11-channel experiment.
+RGB images are resized to `128 x 128` and broadcast to 15 temporal frames.
+This differs from the 11-channel Sen12 input; absolute scores are not directly comparable.

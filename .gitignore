@@ -10,9 +10,6 @@ dist/
 data/
 outputs/
 results/
-!results/
-results/*
-!results/paper_summary.json
 *.pt
 *.pth
 *.ckpt
